@@ -14,6 +14,16 @@ provider "aws" {
 }
 
 # ─────────────────────────────────────────
+# CLOUDWATCH LOG GROUP (FIX)
+# ─────────────────────────────────────────
+resource "aws_cloudwatch_log_group" "eks" {
+  name              = "/aws/eks/${var.cluster_name}/cluster"
+  retention_in_days = 7
+
+  tags = var.tags
+}
+
+# ─────────────────────────────────────────
 # VPC
 # ─────────────────────────────────────────
 module "vpc" {
@@ -62,6 +72,18 @@ module "eks" {
 
   enable_cluster_creator_admin_permissions = true
 
+  # prevent module from creating log group again
+  create_cloudwatch_log_group = false
+
+  # enable control plane logs
+  cluster_enabled_log_types = [
+    "api",
+    "audit",
+    "authenticator",
+    "controllerManager",
+    "scheduler"
+  ]
+
   access_entries = {
     admin = {
       principal_arn = "arn:aws:iam::631721122778:root"
@@ -96,4 +118,8 @@ module "eks" {
   }
 
   tags = var.tags
+
+  depends_on = [
+    aws_cloudwatch_log_group.eks
+  ]
 }
