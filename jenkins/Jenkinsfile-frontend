@@ -1,0 +1,74 @@
+pipeline {
+    agent any
+    environment {
+        DOCKERHUB_USER    = 'orionpax77'
+        FRONTEND_IMAGE    = "${DOCKERHUB_USER}/taskflow-frontend"
+        IMAGE_TAG         = "${BUILD_NUMBER}"
+    }
+    stages {
+        stage('📥 Checkout Code') {
+            steps {
+                checkout scm
+                echo "✅ Code checked out — Build #${BUILD_NUMBER}"
+            }
+        }
+        stage('🔍 Security Scan (Trivy)') {
+            steps {
+                dir('Application-Code/frontend') {
+                    sh '''
+                        trivy fs --exit-code 0 \
+                          --severity HIGH,CRITICAL \
+                          --no-progress .
+                    '''
+                }
+            }
+        }
+        stage('🐳 Build Docker Image') {
+            steps {
+                dir('Application-Code/frontend') {
+                    sh "docker build -t ${FRONTEND_IMAGE}:${IMAGE_TAG} ."
+                    sh "docker tag ${FRONTEND_IMAGE}:${IMAGE_TAG} ${FRONTEND_IMAGE}:latest"
+                }
+            }
+        }
+        stage('🔐 Push to DockerHub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+                    sh "docker push ${FRONTEND_IMAGE}:${IMAGE_TAG}"
+                    sh "docker push ${FRONTEND_IMAGE}:latest"
+                }
+            }
+        }
+        stage('📝 Update K8s Manifest') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'github-token', usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
+                    sh """
+                        git config user.email "jenkins@taskflow.com"
+                        git config user.name "Jenkins CI"
+                        sed -i "s|image: orionpax77/taskflow-frontend:.*|image: orionpax77/taskflow-frontend:${IMAGE_TAG}|" k8s_manifests/frontend/deploy.yaml
+                        git add k8s_manifests/frontend/deploy.yaml
+                        git commit -m "CI: Update frontend image to ${IMAGE_TAG}"
+                        git push https://\${GH_TOKEN}@github.com/orion-pax77/3-tier-project.git HEAD:main
+                    """
+                }
+            }
+        }
+    }
+    post {
+        success {
+            echo "✅ Frontend pipeline succeeded — Image: ${FRONTEND_IMAGE}:${IMAGE_TAG}"
+        }
+        failure {
+            echo "❌ Frontend pipeline FAILED — Check logs above"
+        }
+        always {
+            sh "docker rmi ${FRONTEND_IMAGE}:${IMAGE_TAG} || true"
+            sh "docker rmi ${FRONTEND_IMAGE}:latest || true"
+        }
+    }
+}
