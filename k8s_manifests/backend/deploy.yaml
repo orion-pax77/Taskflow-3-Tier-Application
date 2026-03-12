@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: orionpax77/taskflow:backend-docker-deploy
+          image: orionpax77/taskflow:backend-eks
           ports:
             - containerPort: 5000
           env:
