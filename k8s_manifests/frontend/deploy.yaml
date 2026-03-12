@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: orionpax77/taskflow:frontend-docker-deploy
+          image: orionpax77/taskflow:frontend-eks
           ports:
             - containerPort: 80
           env:
